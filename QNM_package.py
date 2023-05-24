@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import os
 import json
+import scipy
 
 def init_QNM_mode_frequency_coeffs_analytic_database():
     assert os.path.isfile('QNM_mode_frequency_coefficients.jsonc'), \
@@ -11,7 +12,7 @@ def init_QNM_mode_frequency_coeffs_analytic_database():
         QNM_mode_frequency_coefficients = json.load(json_file)
     return QNM_mode_frequency_coefficients
 
-def load_QNM_mode_LUT(n=0,l=2,m=2):
+def load_QNM_mode_LUT(n=0, l=2, m=2):
     assert abs(m) <= l, "m ({0:d}) has to be in the range [-{1:d},{1:d}].\n".format(m,l)
     assert os.path.isdir('QNMSpecLUT'), "QNMSpecLUT folder does not exist in {0:s}.\n".format(os.path.abspath(__file__))
 
@@ -22,7 +23,7 @@ def load_QNM_mode_LUT(n=0,l=2,m=2):
     LUT = pd.read_csv('QNMSpecLUT/{0:s}'.format(fn), delim_whitespace=True, names=entries)
     return LUT
 
-def freq_for_mode(db, l=2, m=2, n=0, mass=1, spin=0, method="analytic"):
+def freq_for_mode(db, l=2, m=2, n=0, mass=1, spin=0, method="LUT"):
     """
     This function extracts frequencies for a given mode using various methods
     1. Analytic interpolation presented in arXiv:gr-qc/0512160, eq. E1-E2.
@@ -30,7 +31,7 @@ def freq_for_mode(db, l=2, m=2, n=0, mass=1, spin=0, method="analytic"):
     3. Using qnm Python package presented in arXiv:1908.10377
     """
     assert method in ["analytic", "LUT", "qnmpy"], "Method {0:s} is invalid.\n".format(method) # nana todo - add support for Leo Stein's code
-    assert np.all(spin >= 0) and np.all(spin <= 1), "Black hole spin is not physical. It is {0:f}.\n".format(spin)
+    #assert np.all(spin >= 0) and np.all(spin <= 1), "Black hole spin is not physical. It is {0:f}.\n".format(spin)
 
     if method == "analytic":
         f1, f2, f3, perc_re, q1, q2, q3, perc_im = db[f"{l}"][f"{m}"][f"{n}"]
