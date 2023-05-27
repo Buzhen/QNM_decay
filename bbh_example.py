@@ -1,6 +1,8 @@
 import numpy as np
 import sxs
 import scipy
+import qnm
+import timeit
 
 from scipy import signal
 from scipy.optimize import curve_fit
@@ -96,14 +98,7 @@ def calc_range_offset(signal):
     return ind_peak - 800, ind_noise + 800, t_peak
 
 
-def fit_func(t, amps, phases):
-    LUT = load_QNM_mode_LUT(0, 2, 2)
-    #db = init_QNM_mode_frequency_coeffs_analytic_database()
-    freq = freq_for_mode(LUT, l=2, m=2, n=0, mass=0.954, spin=0.686, method="LUT")
-    #freq = freq_for_mode(db, l=2, m=2, n=0, mass=mass, spin=spin, method="analytic")
-    return amps * np.exp(np.imag(freq)*(t)+ phases) * np.cos(np.real(freq)*(t) + phases)
-    #return np.real(amps * np.exp(1j* freq * t + phases))
-
+def fit_func(t, amps, phases, mass, spin):
     """signal = 0
     N = 1
     assert N<7
@@ -114,13 +109,15 @@ def fit_func(t, amps, phases):
         signal += amps * np.exp(-1j*freq_for_mode(LUT, l=l, m=m, n=n, mass=mass, spin=spin, method="LUT")*t
                                       + phases)
     return signal"""
+    freq = freq_for_mode(l=2, m=2, n=0, mass=mass, spin=spin, method="qnmpy")#mass=0.954, spin=0.686, method="qnmpy")
+    return amps * np.exp(np.imag(freq) * t + phases) * np.cos(np.real(freq) * t + phases)
+    #return np.real(amps * np.exp(-1j * freq * t + phases))
 
 def BCPmimic(signal, N=0):
-    amps = np.zeros(N+1)
-    phases = np.zeros(N+1)
-
     crop_ind = 900
-    popt, pcov = curve_fit(fit_func, signal.t[crop_ind:]-signal.t[crop_ind], np.real(signal.data[crop_ind:]))
+    popt, pcov = curve_fit(fit_func, signal.t[crop_ind:]-signal.t[crop_ind],
+                           np.real(signal.data[crop_ind:]),
+                           bounds=([0, 0, 0.9, 0.5], [np.inf, 2*np.pi, 1, 1]))
     plt.figure(0)
     plt.plot(signal.t, np.real(signal.data))
     plt.plot(signal.t[800:], fit_func(signal.t[800:]-signal.t[crop_ind], *popt), 'g--')
@@ -131,7 +128,7 @@ def BCPmimic(signal, N=0):
 
 def init_system():
     sxs.write_config(download=True, cache=True)
-
+    qnm.download_data()
 
 def main(bDebug=False, wavefunction_type='rhOverM', extrapolation_order=-1):
     catalog = sxs.load("catalog")
@@ -154,7 +151,6 @@ def main(bDebug=False, wavefunction_type='rhOverM', extrapolation_order=-1):
     remnant_mass = catalog.simulations[sxs_event].remnant_mass
     remnant_spin_mag = np.linalg.norm(catalog.simulations[sxs_event].remnant_dimensionless_spin)
 
-
     modes = [[2,2,0], [2,1,0], [3,3,0], [4,4,0]]
     signal = []
     ranges = []
@@ -174,11 +170,12 @@ def main(bDebug=False, wavefunction_type='rhOverM', extrapolation_order=-1):
         BCPmimic(signalI[s:e])
 
         freq_numI = freq_from_num_data(signalI[s:e], bDebug=False)
+
         remnant_freqI = freq_for_mode(QNM_mode_frequency_coefficients, l=l, m=m, n=n, mass=remnant_mass,
-                                     spin=remnant_spin_mag, method='LUT')
+                                     spin=remnant_spin_mag, method='qnmpy')
+
         freq_filt = clean_noise_freq(freq_numI, 0.05)
-        #massI, spinI = props_from_freq(QNM_mode_frequency_coefficients, freq_numI, l=l, m=m, n=n, method="LUT")
-        massI, spinI = props_from_freq(QNM_mode_frequency_coefficients, freq_filt, l=l, m=m, n=n, method="LUT")
+        massI, spinI = props_from_freq(freq_filt, l=l, m=m, n=n, method="LUT")
 
         signal.append(signalI)
         ranges.append([s, e, t_peak])

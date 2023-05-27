@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import os
 import json
+
+import qnm
 import scipy
 
 def init_QNM_mode_frequency_coeffs_analytic_database():
@@ -23,7 +25,7 @@ def load_QNM_mode_LUT(n=0, l=2, m=2):
     LUT = pd.read_csv('QNMSpecLUT/{0:s}'.format(fn), delim_whitespace=True, names=entries)
     return LUT
 
-def freq_for_mode(db, l=2, m=2, n=0, mass=1, spin=0, method="LUT"):
+def freq_for_mode(db=[], LUT=[], l=2, m=2, n=0, mass=1, spin=0, s=-2, method="LUT"):
     """
     This function extracts frequencies for a given mode using various methods
     1. Analytic interpolation presented in arXiv:gr-qc/0512160, eq. E1-E2.
@@ -34,19 +36,26 @@ def freq_for_mode(db, l=2, m=2, n=0, mass=1, spin=0, method="LUT"):
     #assert np.all(spin >= 0) and np.all(spin <= 1), "Black hole spin is not physical. It is {0:f}.\n".format(spin)
 
     if method == "analytic":
+        if db==[]:
+            db = init_QNM_mode_frequency_coeffs_analytic_database()
         f1, f2, f3, perc_re, q1, q2, q3, perc_im = db[f"{l}"][f"{m}"][f"{n}"]
         freq_re = (f1 + f2*np.power(1-spin, f3))/mass
         Q = q1 + q2*np.power(1-spin, q3)
         freq_im = -freq_re/(2*Q)
     elif method == "LUT":
-        LUT = load_QNM_mode_LUT(n, l, m)
+        if LUT==[]:
+            LUT = load_QNM_mode_LUT(n, l, m)
         freq_re = np.interp(spin, LUT['a/M'].values, LUT['MwR'].values)/mass
         freq_im = np.interp(spin, LUT['a/M'].values, LUT['MwI'].values)/mass
+    elif method == "qnmpy":
+        grav = qnm.modes_cache(s=s, l=l, m=m, n=n)
+        freq, A, C = grav(a=spin)
+        return freq/mass
     else:
         assert False, "todo - add support for Leo Stein's code.\n"
     return freq_re + 1j*freq_im
 
-def props_from_freq(db, freq, l=2, m=2, n=0, method="LUT"):
+def props_from_freq(freq, db=[], LUT=[], l=2, m=2, n=0, method="LUT"):
     """
     This function extracts frequencies for a given mode using various methods
     1. Analytic interpolation presented in arXiv:gr-qc/0512160, eq. E1-E2.
@@ -56,6 +65,8 @@ def props_from_freq(db, freq, l=2, m=2, n=0, method="LUT"):
     assert method in ["analytic", "LUT", "qnmpy"], "Method {0:s} is invalid.\n".format(method) # nana todo - add support for Leo Stein's code
 
     if method == "analytic":
+        if db==[]:
+            db = init_QNM_mode_frequency_coeffs_analytic_database()
         f1, f2, f3, perc_re, q1, q2, q3, perc_im = db[f"{l}"][f"{m}"][f"{n}"]
         Q_factor = np.real(freq)/(2*np.abs(np.imag(freq)))
         spin = 1 - np.power((Q_factor-q1)/q2, 1/q3)
@@ -68,7 +79,8 @@ def props_from_freq(db, freq, l=2, m=2, n=0, method="LUT"):
         4. Calculate MwR similarly to 3 and extract M.
         """
         Q = np.real(freq)/(2*np.abs(np.imag(freq)))
-        LUT = load_QNM_mode_LUT(n, l, m)
+        if LUT==[]:
+            LUT = load_QNM_mode_LUT(n, l, m)
         LUT["Q"] = LUT["MwR"]/(2*np.abs(LUT["MwI"]))
         assert len(LUT["Q"]) == len(LUT["Q"].unique()), "Quality factor in database has repeating values."
         assert np.all((LUT["Q"].diff()>0)[1:]), "Quality factor in database is not monotonous."
